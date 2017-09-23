@@ -1,0 +1,535 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <GL/glut.h>
+#include <GL/gl.h>
+#include<GL/GLAux.h>
+static double fenceHeight = -0.5;
+
+#define MAX_PARTICLES 1000  //입자 총 수
+#define WCX		640
+#define WCY		480
+#define RAIN	0
+#define SNOW	1
+
+
+float slowdown = 2.0;
+float velocity = 0.0;
+
+int loop;
+int fall;
+
+float g_fSpinX = 0.0f;
+float g_fSpinY = 0.0f;
+
+static POINT ptLastMousePosit;
+static POINT ptCurrentMousePosit;
+static bool bMousing;
+
+
+typedef struct {
+	// 라이프
+	bool alive;	// 입자는 살아있는지
+	float life;
+	float fade;
+	// 색
+	float red;
+	float green;
+	float blue;
+	// 위치
+	float xpos;
+	float ypos;
+	float zpos;
+	// Velocity
+	float vel;
+	// Gravity
+	float gravity;
+}particles;
+
+// 입자 시스템
+particles par_sys[MAX_PARTICLES];
+
+
+void MyMouse(int button, int state, int x, int y) {
+	switch (button) {
+	case GLUT_LEFT_BUTTON:
+		if (state == GLUT_DOWN) {
+			ptLastMousePosit.x = ptCurrentMousePosit.x = x;
+			ptLastMousePosit.y = ptCurrentMousePosit.y = y;
+			bMousing = true;
+		}
+		else
+			bMousing = false;
+		break;
+	case GLUT_MIDDLE_BUTTON:
+	case GLUT_RIGHT_BUTTON:
+		break;
+	default:
+		break;
+	}
+
+	glutPostRedisplay();
+}
+
+void MyMotion(int x, int y) {
+	ptCurrentMousePosit.x = x;
+	ptCurrentMousePosit.y = y;
+
+	if (bMousing) {
+		g_fSpinX -= (ptCurrentMousePosit.x - ptLastMousePosit.x);
+		g_fSpinY -= (ptCurrentMousePosit.y - ptLastMousePosit.y);
+	}
+
+	ptLastMousePosit.x = ptCurrentMousePosit.x;
+	ptLastMousePosit.y = ptCurrentMousePosit.y;
+
+	glutPostRedisplay();
+}
+
+void SetupRC()
+{
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+	glFrontFace(GL_CCW);
+	GLfloat whiteLight[] = { 0.05f, 0.05f, 0.05f, 1.0f };
+	GLfloat sourceLight[] = { 0.25f, 0.25f, 0.25f, 1.0f };
+	GLfloat lightPos[] = { -5.0f, 15.0f, 5.0f, 1.0f };
+
+	glEnable(GL_LIGHTING);
+	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, whiteLight);
+	glLightfv(GL_LIGHT0, GL_AMBIENT_AND_DIFFUSE, sourceLight);
+	glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+	glEnable(GL_LIGHT0);
+	glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
+	glEnable(GL_COLOR_MATERIAL);
+
+}
+
+
+void normal_keys(unsigned char key, int x, int y) {
+	if (key == 'r') { // 비 배경
+		fall = RAIN;
+		glutPostRedisplay(); //계속해서 새로고침
+	}
+	if (key == 's') { // 눈 배경
+		fall = SNOW;
+		glutPostRedisplay();
+	}
+	if (key == ',') { // 속도 다운!
+		if (slowdown > 4.0) slowdown += 0.01;
+	}
+	if (key == '.') { // 속도 업!
+		if (slowdown > 1.0) slowdown -= 0.01;
+	}
+	if (key == 'q') { //끝
+		exit(0);
+	}
+}
+
+
+void DrawTopTriangleSet(){ //프로펠러 그리기위한 준비
+	glBegin(GL_TRIANGLE_STRIP); //삼각형
+
+	for (int i = 180; i >= 0; i = i - 1){
+		glNormal3f(0, cos(i*3.14159265 / 180), sin(i*3.14159265 / 180));
+		glVertex3f(i*3.14159265 / 180, 0, 0.5*sin(i*3.14159265 / 180));
+		glVertex3f(i*3.14159265 / 180, 0.5*sin(i*3.14159265 / 180), 0 * -sin(i*3.14159265 / 180));
+	}
+
+	glEnd();
+}
+
+
+
+void initParticles(int i) { //입자 초기화
+	par_sys[i].alive = true;  //입자가 나타나게 하기위해 true를 설정
+	par_sys[i].life = 1.0;    //입자의 목숨
+	par_sys[i].fade = float(rand() % 100) / 1000.0f + 0.003f; //이것을 이용해 나중에 목숨값을 떨어트릴것이다.
+
+	//위치 설정
+	par_sys[i].xpos = (float)(rand() % 21) - 10;
+	par_sys[i].ypos = 10.0;
+	par_sys[i].zpos = (float)(rand() % 21) - 10;
+
+	//색 설정
+	par_sys[i].red = 0.5;
+	par_sys[i].green = 0.5;
+	par_sys[i].blue = 1.0;
+
+	par_sys[i].vel = velocity;
+	par_sys[i].gravity = -0.8;
+
+}
+
+void init() { //초기화
+	int x, z;
+
+	glShadeModel(GL_SMOOTH);                 //부드럽게
+	glClearColor(0.0, 0.0, 0.0, 0.0);
+	glClearDepth(1.0);
+	glEnable(GL_DEPTH_TEST);
+
+	for (loop = 0; loop < MAX_PARTICLES; loop++) {  //1000개의 입자 초기화를 한다.
+		initParticles(loop);
+	}
+}
+
+
+
+
+
+void drawRain() {  //비!
+	float x, y, z;
+	for (loop = 0; loop < MAX_PARTICLES; loop = loop + 2) {
+		if (par_sys[loop].alive == true) {
+			x = par_sys[loop].xpos;
+			y = par_sys[loop].ypos;
+			z = par_sys[loop].zpos - 25.0;
+
+			// 입자를 그린다.
+			glColor3f(0.5, 0.5, 1.0);
+			glBegin(GL_LINES);
+			glVertex3f(x, y, z);
+			glVertex3f(x, y + 0.5, z);
+			glEnd();
+
+			// 값을 업데이트해 움직이도록 설정한다.
+			// 속도를 위해 slowdown을 적용
+			par_sys[loop].ypos += par_sys[loop].vel / (slowdown * 1000);
+			par_sys[loop].vel += par_sys[loop].gravity;
+			// 생명력 낮추기
+			par_sys[loop].life -= par_sys[loop].fade;
+
+			if (par_sys[loop].ypos <= -10) {
+				par_sys[loop].life = -1.0;
+			}
+			//생명력이 0보다 작아지면 입자를 다시 초기화시켜 살려낸다. 
+			if (par_sys[loop].life < 0.0) {
+				initParticles(loop);
+			}
+		}
+	}
+}
+
+
+void drawSnow() {  //눈!
+	float x, y, z;
+	for (loop = 0; loop < MAX_PARTICLES; loop = loop + 2) {
+		if (par_sys[loop].alive == true) {
+			x = par_sys[loop].xpos;
+			y = par_sys[loop].ypos;
+			z = par_sys[loop].zpos - 23.0;
+
+			// 입자 그리기
+			glColor3f(1.0, 1.0, 1.0);
+			glPushMatrix();
+			glTranslatef(x, y, z);
+			glutSolidSphere(0.2, 16, 16);
+			glPopMatrix();
+
+			// 값을 업데이트
+			par_sys[loop].ypos += par_sys[loop].vel / (slowdown * 1000);
+			par_sys[loop].vel += par_sys[loop].gravity;
+			// 라이프를 깎는다.
+			par_sys[loop].life -= par_sys[loop].fade;
+
+
+			//라이프가 0보다 작아지면 입자를 다시 초기화 
+			if (par_sys[loop].life < 0.0) {
+				initParticles(loop);
+			}
+		}
+	}
+}
+
+
+void drawSnowMan() {
+
+	glColor3f(1.0f, 1.0f, 1.0f);
+
+	// 몸
+	glTranslatef(1.0f, -1.0f, -12.0f);
+	glutSolidSphere(0.75f, 20, 20);
+
+	// 머리
+	glTranslatef(0.0f, 0.93f, 0.0f);
+	glutSolidSphere(0.25f, 20, 20);
+
+	// 눈
+	glPushMatrix();
+	glColor3f(0.0f, 0.0f, 0.0f);
+	glTranslatef(0.05f, 0.10f, 0.18f);
+	glutSolidSphere(0.05f, 10, 10);
+	glTranslatef(-0.1f, 0.0f, 0.0f);
+	glutSolidSphere(0.05f, 10, 10);
+	glPopMatrix();
+
+	// 코
+	glColor3f(1.0f, 0.5f, 0.5f);
+	glutSolidCone(0.08f, 0.5f, 10, 2);
+
+
+
+	GLUquadricObj *quadricObj = gluNewQuadric(); //객체를 생성
+	gluQuadricNormals(quadricObj, GLU_SMOOTH);//법선 벡터를 제어
+
+	glPushMatrix();
+	glTranslatef(2.0f, -1.0f, 0.0f);
+
+	glPushMatrix();
+	glColor3f(1.0f, 1.0f, 1.0f);
+	gluSphere(quadricObj, .65f, 26, 13);
+
+	glTranslatef(0.0f, 0.85f, 0.0f);
+	gluSphere(quadricObj, 0.42f, 26, 13);
+
+	glTranslatef(0.0f, 0.63f, 0.0f);
+	gluSphere(quadricObj, 0.36f, 26, 13);
+	glTranslatef(-0.2f, 0.1f, 0.31f);
+	glColor3f(0.0f, 0.0f, 0.0f);
+	gluSphere(quadricObj, 0.05f, 26, 13);
+
+	glTranslatef(0.4f, 0.0f, 0.0f);
+	gluSphere(quadricObj, 0.05f, 26, 13);
+	glTranslatef(-0.2f, -0.08f, 0.03f);
+	glColor3f(1.0f, 0.5f, 0.5f);
+	gluCylinder(quadricObj, 0.04f, 0.0f, 0.6f, 26, 13);
+	glPopMatrix();
+
+	glPushMatrix();
+	glColor3f(1.0f, 0.5f, 1.0f);
+	glTranslatef(0.0f, 2.2f, 0.0f);
+	glRotatef(90.0, 1.0f, 0.0f, 0.0f);
+	gluCylinder(quadricObj, 0.2f, 0.2f, 0.4f, 26, 13);
+
+	glDisable(GL_CULL_FACE);
+	gluDisk(quadricObj, 0.17f, 0.2f, 26, 13);
+
+	glTranslatef(0.0f, 0.0f, 0.40f);
+	gluDisk(quadricObj, 0.0f, 0.4f, 26, 13);
+	glEnable(GL_CULL_FACE);
+	glPopMatrix();
+
+	glPopMatrix();
+}
+
+
+void DrawSticksArroundYard(){
+	GLUquadricObj *quadObj; //객체를 생성
+
+	// 오른쪽 라인
+	glPushMatrix();
+	glTranslatef(6.8, -2.0 + fenceHeight, -30.0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.1, 0.1, 14.0, 10, 10);
+	glPopMatrix();
+
+	// 왼쪽 라인
+	glPushMatrix();
+	glTranslatef(-6.8, -2.0 + fenceHeight, -30.0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.1, 0.1, 14.0, 10, 10);
+	glPopMatrix();
+
+	// 뒤 라인
+	glPushMatrix();
+	glTranslatef(-6.8, -2.0 + fenceHeight, -30.0);
+	glRotatef(90, 0, 1, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.1, 0.1, 13.7, 10, 10);
+	glRotatef(-90, 0, 1, 0);
+	glPopMatrix();
+
+	// 앞 라인
+	glPushMatrix();
+	glTranslatef(6.8, -2.0 + fenceHeight, -16.0);
+	glRotatef(-90, 0, 1, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.1, 0.1, 13.7, 10, 10);
+	glRotatef(90, 0, 1, 0);
+	glPopMatrix();
+
+	// 앞 오른쪽 핀
+	glPushMatrix();
+	glTranslatef(6.8, -3, -16.0);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+	// 앞 왼쪽 핀
+	glPushMatrix();
+	glTranslatef(-6.8, -3, -16.0);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+	// 뒤 왼쪽 핀
+	glPushMatrix();
+	glTranslatef(-6.8, -3, -30.0);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+	// 뒤 오른쪽 핀
+	glPushMatrix();
+	glTranslatef(6.8, -3, -30.0);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+	// 뒤 가운데 핀
+	glPushMatrix();
+	glTranslatef(0, -3, -30.0);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+	// 앞 가운데 핀
+	glPushMatrix();
+	glTranslatef(0, -3, -16.0);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+	// 오른쪽 가운데 핀
+	glPushMatrix();
+	glTranslatef(6.8, -3, -22);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+	//왼쪽 가운데 핀
+	glPushMatrix();
+	glTranslatef(-6.8, -3, -22);
+	glRotatef(-90, 1, 0, 0);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.1, 1.3 + fenceHeight, 10, 10);
+	glRotatef(90, 1, 0, 0);
+	glPopMatrix();
+
+}
+
+void drawpropeller(){ //프로펠러그리기
+	GLUquadricObj *quadObj; //객체 생성
+
+	//프로펠러 가운데 꼬깔콘을 만든다.
+	glPushMatrix();
+	glTranslatef(0, 6.5, 0.5);
+	glColor3f(0.0f, 1.0f, 0.0f);
+	quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2f, 0.0f, 0.6f, 26, 13);
+	glPopMatrix();
+
+	//3개의 날 프로펠러를 그린다.
+	for (int i = 0; i < 3; i++){
+		glPushMatrix();
+		glColor3f(1.0f, 0.0f, 0.0f);
+		glTranslatef(0, 6.5, 0.5);
+		glRotatef(i * 360 / 3, 0, 0, 1);
+		DrawTopTriangleSet();
+		glPopMatrix();
+	}
+}
+
+void DrawCenterPin(){ //가운데 원기둥
+	glColor3f(1.0f, 0.0f, 0.0f);
+	glTranslatef(0, -3, -22);
+	glRotatef(-90, 1, 0, 0);
+	GLUquadricObj *quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.2, 0.2, 7, 10, 10);
+	glRotatef(90, 1, 0, 0);
+}
+
+void DrawBase(){ //밑에 베이즈를 깐다.
+	glRotatef(-90, 1, 0, 0);
+	GLUquadricObj *quadObj = gluNewQuadric();
+	gluCylinder(quadObj, 0.5, 0.1, 2, 10, 10);
+	glRotatef(90, 1, 0, 0);
+
+}
+
+
+
+void drawScene() {
+	int i, j;
+	float x, y, z;
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glMatrixMode(GL_MODELVIEW);
+
+	glLoadIdentity();
+	//마우스움직임을 넣기 위해
+	glRotatef(-g_fSpinY / 20, 1.0, 0, 0);
+	glRotatef(-g_fSpinX / 20, 0.0, 1.0, 0);
+
+	//비가 내린다면 비가 내리는데 필요한 함수
+	if (fall == RAIN) {
+		drawRain();
+		DrawSticksArroundYard();
+		DrawCenterPin();
+		DrawBase();
+		drawpropeller();
+
+	}
+	//눈이 내린다면 눈이 내리는데 필요한 함수
+	else if (fall == SNOW) {
+		drawSnow();
+		drawSnowMan();
+
+	}
+
+	glutSwapBuffers();
+}
+
+void reshape(int w, int h) {
+	if (h == 0) h = 1;
+
+	glViewport(0, 0, w, h);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	gluPerspective(45, (float)w / (float)h, .1, 200); //멀고 가까움을 표현
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+}
+
+void idle() {
+	glutPostRedisplay();//새로고침
+}
+
+
+
+int main(int argc, char** argv) {
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DEPTH | GLUT_RGB | GLUT_DOUBLE);
+	glutInitWindowSize(WCX, WCY);
+	glutCreateWindow("weather");
+	init();
+	glutDisplayFunc(drawScene);
+	glutReshapeFunc(reshape);
+	SetupRC();
+	glutKeyboardFunc(normal_keys);
+	glutMouseFunc(MyMouse);
+	glutMotionFunc(MyMotion);
+	glutIdleFunc(idle);
+	glutMainLoop();
+	return 0;
+}

@@ -1,0 +1,147 @@
+#include<GL/glut.h>
+GLfloat angle, angle2;
+int moving, startx, starty;
+
+void tableLeg(double thick, double len)  // 테이블에 다리 만들기
+{
+
+	glPushMatrix();//물체 값들 푸시
+	glTranslated(0, len / 2, 0);//현재 좌표계를 y축으로 len/2 만큼 이동 
+	glScaled(thick, len, thick); //크기 조절
+	glutSolidCube(1.0); //길이 1인 테이블 다리 만들기
+	glPopMatrix();//물체 값들 팝
+
+}
+void table(double topWid, double topThick, double legThick, double legLen) //테이블만들기
+{
+	//테이블 윗 판을 만든다.
+	glPushMatrix();//물체 값들 푸시
+	glTranslated(0, legLen, 0);//현재 좌표계를 y축으로 legLen 만큼 이동 
+	glScaled(topWid, topThick, topWid); //크기 조절
+	glutSolidCube(1.0); //길이 1인 테이블 만들기
+	glPopMatrix();//물체 값들 팝
+
+	double dist = 0.95* topWid / 2.0 - legThick / 2.0;  //테이블 각각의 다리들을 떨어트리는데 쓰는 값
+
+	//테이블 다리 4개를 만든다.
+	glPushMatrix();//물체 값들 푸시
+	//한개의 다리 생성과 위치를 지정을 4번한다.
+	glTranslated(dist, 0, dist);
+	tableLeg(legThick, legLen);
+	glTranslated(0.0, 0.0, -2 * dist);
+	tableLeg(legThick, legLen);
+	glTranslated(-2 * dist, 0, 2 * dist);
+	tableLeg(legThick, legLen);
+	glTranslated(0, 0, -2 * dist);
+	tableLeg(legThick, legLen);
+	glPopMatrix();//물체 값들 팝
+}
+void myinit() //초기화
+{
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	//프로젝션 메트릭스를 초기화한다.
+	glOrtho(-100, 100, -100, 100, -100, 100);
+	glMatrixMode(GL_MODELVIEW);
+}
+void displaySolid(void)
+{
+	
+	GLfloat mat_ambient[] = { 0.0f, 1.0f, 0.0f, 1.0f }; //주변광
+	GLfloat mat_diffuse[] = { 0.0f, 1.0f, 0.0f, 1.0f }; //확산광
+	GLfloat mat_specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };//반사광
+	GLfloat mat_shininess[] = { 50.0f };                //빛이 비추는 크기
+	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+	glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
+
+	// 빛 속성 값 적용
+	GLfloat lightIntensity[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	GLfloat light_position[] = { 100.0f, 6.0f, 3.0f, 0.0f };
+	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, lightIntensity);
+	
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	//프로젝션행렬을 단위행렬로 초기화
+	glOrtho(-1.33, 1.33, -1, 1, -100, 100.0);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	//모델뷰행렬을 단위행렬로 초기화
+	gluLookAt(2.3, 1.3, 2.0, 0.0, 0.25, 0.0, 0.0, 1.0, 0.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glLoadIdentity();
+	glRotatef(angle, 1, 0, 0);
+	glRotatef(angle2, 0, 1, 0);
+
+	//테이블 설정
+	glPushMatrix();//물체 값들 푸시
+	glTranslated(0.4, 0, 0.4);
+	glColor3f(0.0, 1.0, 1.0);
+	table(0.6, 0.02, 0.02, 0.3);
+	glPopMatrix();//물체 값들 팝
+
+	//주전자 설정
+	glPushMatrix();//물체 값들 푸시
+	mat_ambient[2] = 1.0f;
+	mat_ambient[1] = 0.7f;
+	mat_diffuse[2] = 1.0f;
+	mat_diffuse[1] = 0.7f;
+	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+	glTranslated(0.6, 0.38, 0.5);
+	glRotated(30, 0, 1, 0);//y축을 중심으로 30만큼 회전
+	glColor3f(1.0, 1.0, 0.0);
+	glutSolidTeapot(0.08);//주전자
+	glPopMatrix();//물체 값들 팝
+	
+
+	glFlush();//버퍼에 쌓인 명령어들을 모두 비우고, 즉시 실행이 되도록 한다.
+	glutSwapBuffers();
+}
+void mouse(int btn, int state, int x, int y)
+{
+	if (btn == GLUT_LEFT_BUTTON&&state == GLUT_DOWN) //만약 왼쪽버튼이 눌렸을 때
+	{ //무빙은 1로 true 값을 만들게 하고 눌린 x,y좌표를 startx,starty에 저장
+		moving = 1;
+		startx = x;
+		starty = y;
+	}
+	if (btn == GLUT_LEFT_BUTTON&&state == GLUT_UP)//만약 왼쪽버튼이 떨어졌을 때
+	{//무빙을 0으로 하여 false로 한다.
+		moving = 0;
+	}
+}
+void motion(int x, int y)
+{
+	if (moving)  //만약 움직임이 있다면
+	{
+		angle = angle + (x - startx);   //x축으로 이동한 만큼 angle에 저장
+		angle2 = angle2 + (y - starty); //y축으로 이동한 만큼 angle2에 저장
+		startx = x;  //이동한 x를 시작점으로 다시 저장
+		starty = y;  //이동한 y를 시작점으로 다시 저장
+		glutPostRedisplay(); //새로고침하도록 한다
+	}
+}
+int main(int argc, char** argv)
+{
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);//그래픽을 출력하려면 필수적으로 호출해야 하는 함수(더블 버퍼 사용, 트루 컬러 모드, 깊이 버퍼 사용)
+	glutInitWindowSize(640, 400);  //크기 설정
+	glutInitWindowPosition(100, 100); //위치 설정
+	glutCreateWindow("52111667 김경제"); //창 이름
+	glutDisplayFunc(displaySolid); //화면을 그릴 때 호출할 함수를 등록
+	glutMouseFunc(mouse); //마우스 입력을 받았을 때 호출할 함수를 등록
+	glutMotionFunc(motion);//마우스 버튼이 눌린 상태에서 윈도우 내에서 마우스 포인터가 움직이는 경우에 호출할 함수를 등록
+	glEnable(GL_LIGHTING); //조명 효과를 설정
+	glEnable(GL_LIGHT0); //조명켜기
+	glShadeModel(GL_SMOOTH); //매끄러운 쉐이딩 속성, 색감이 부드럽게 바뀌게 하는 속성
+	glEnable(GL_NORMALIZE); //자동적으로 단위법선벡터를 구하게 해주는 함수
+	glEnable(GL_DEPTH_TEST); //깊이 정보에 따라 물체를 그려준다.
+	glClearColor(0.1, 0.1, 0.1, 0.0);
+	glViewport(0, 0, 640, 480); //뷰 포트 0,0에서부터 640너비, 480높이로 설정
+	myinit();
+	glutMainLoop(); //메시지 루프를 돌린다.
+	return 0;
+}
